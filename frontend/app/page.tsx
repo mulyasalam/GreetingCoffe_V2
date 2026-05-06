@@ -41,7 +41,7 @@ const perks = [
   { icon: <Wifi className="h-5 w-5" />, label: "Free Wi-Fi Kencang" },
   { icon: <Armchair className="h-5 w-5" />, label: "Tempat Duduk Nyaman" },
   { icon: <Users className="h-5 w-5" />, label: "Cocok untuk Nongkrong" },
-  { icon: <Clock className="h-5 w-5" />, label: "Buka 07.00 – 22.00" },
+  { icon: <Clock className="h-5 w-5" />, label: "Buka 16.00 – 22.00" },
 ];
 
 export default function Home() {
@@ -54,6 +54,7 @@ export default function Home() {
           src="https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=1920&q=85"
           alt="Suasana Greeting.co Coffee"
           fill
+          sizes="100vw"
           priority
           className="object-cover object-center"
         />
@@ -73,13 +74,13 @@ export default function Home() {
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500" />
               </span>
               <span className="text-white/80 text-sm font-medium tracking-wide">
-                Buka Sekarang · 07.00 – 22.00 WIB
+                Buka Sekarang · 16.00 – 00.00 WITA
               </span>
             </div>
 
             {/* Main headline */}
             <h1 className="text-5xl md:text-7xl font-black text-white leading-[1.05] mb-5 tracking-tight">
-              Di Sini,{" "}
+              Disini,{" "}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-orange-400">
                 Kopi
               </span>
@@ -167,6 +168,7 @@ export default function Home() {
                 src="https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=900&q=85"
                 alt="Latte art Greeting.co"
                 fill
+                sizes="(max-width: 1024px) 100vw, 50vw"
                 className="object-cover"
               />
               {/* Badge overlay */}
@@ -314,6 +316,7 @@ export default function Home() {
           src="https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=1920&q=80"
           alt="Suasana kafe"
           fill
+          sizes="100vw"
           className="object-cover object-center"
         />
         <div className="absolute inset-0 bg-primary/85" />
@@ -355,7 +358,7 @@ export default function Home() {
             <div className="flex flex-col items-center gap-2">
               <MapPin className="h-8 w-8 text-primary" />
               <p className="font-bold text-lg">Lokasi Strategis</p>
-              <p className="text-muted-foreground">Pusat Kota Bandung</p>
+              <p className="text-muted-foreground">Banjarmasin</p>
             </div>
           </div>
         </div>

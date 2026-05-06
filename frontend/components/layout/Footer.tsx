@@ -30,15 +30,15 @@ export default function Footer() {
             <ul className="space-y-2 text-sm text-primary-foreground/75">
               <li className="flex items-start gap-2">
                 <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
-                <span>Jl. Kopi Nusantara No. 12, Bandung, Jawa Barat</span>
+                <span>Jalan Mahligai 29 70654 Banjar West Java</span>
               </li>
               <li className="flex items-center gap-2">
                 <Clock className="h-4 w-4 shrink-0" />
-                <span>Senin – Minggu, 07.00 – 22.00 WIB</span>
+                <span>Senin – Minggu, 16.00 – 00.00 WITA</span>
               </li>
               <li className="flex items-center gap-2">
                 <Phone className="h-4 w-4 shrink-0" />
-                <span>+62 812 3456 7890</span>
+                <span>+62 822-5253-8513</span>
               </li>
             </ul>
           </div>

@@ -51,6 +51,19 @@ type ApiOrder = {
   }[];
 };
 
+type ApiReservation = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  date: string;
+  time: string;
+  guests: number;
+  notes?: string | null;
+  status: "pending" | "confirmed" | "cancelled";
+  createdAt: string;
+};
+
 // ── Status config ─────────────────────────────────────────────────────────────
 const statusConfig: Record<
   ApiOrder["status"],
@@ -89,6 +102,24 @@ const nextStatusLabel: Record<ApiOrder["status"], string | null> = {
   preparing: "Tandai Siap",
   ready: "Selesaikan",
   completed: null,
+};
+
+const reservationStatusConfig: Record<
+  ApiReservation["status"],
+  { label: string; color: string }
+> = {
+  pending: {
+    label: "Belum Di-accept",
+    color: "bg-yellow-100 text-yellow-800 border-yellow-300",
+  },
+  confirmed: {
+    label: "Sudah Di-accept",
+    color: "bg-green-100 text-green-800 border-green-300",
+  },
+  cancelled: {
+    label: "Dibatalkan",
+    color: "bg-gray-100 text-gray-700 border-gray-300",
+  },
 };
 
 const periodLabels: Record<RevenuePeriod, string> = {
@@ -150,6 +181,19 @@ function filterByPeriod(
         : sameDay(o.createdAt, now);
     return false;
   });
+}
+
+function toReservationDateTime(reservation: ApiReservation): Date {
+  return new Date(`${reservation.date}T${reservation.time}:00`);
+}
+
+function formatReservationSchedule(reservation: ApiReservation): string {
+  return `${toReservationDateTime(reservation).toLocaleDateString("id-ID", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  })} · ${reservation.time} WIB`;
 }
 
 // ── OrderCard ─────────────────────────────────────────────────────────────────
@@ -237,18 +281,88 @@ function OrderCard({
   );
 }
 
+function ReservationCard({
+  reservation,
+  updating,
+  onStatusChange,
+}: {
+  reservation: ApiReservation;
+  updating: boolean;
+  onStatusChange: (id: string, status: ApiReservation["status"]) => void;
+}) {
+  const cfg = reservationStatusConfig[reservation.status];
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <div>
+            <p className="font-black text-primary">{reservation.name}</p>
+            <p className="text-xs text-muted-foreground">{reservation.id}</p>
+          </div>
+          <Badge className={`${cfg.color} border text-xs`}>{cfg.label}</Badge>
+        </div>
+
+        <Separator className="mb-3" />
+
+        <div className="space-y-1 text-sm mb-3">
+          <p className="text-muted-foreground">
+            📅 {formatReservationSchedule(reservation)}
+          </p>
+          <p className="text-muted-foreground">👥 {reservation.guests} orang</p>
+          <p className="text-muted-foreground">📞 {reservation.phone}</p>
+          <p className="text-muted-foreground truncate">✉️ {reservation.email}</p>
+        </div>
+
+        {reservation.notes && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800 mb-3">
+            📝 {reservation.notes}
+          </div>
+        )}
+
+        <Separator className="mb-3" />
+        <div className="flex justify-end gap-2">
+          {reservation.status === "pending" && (
+            <Button
+              size="sm"
+              onClick={() => onStatusChange(reservation.id, "confirmed")}
+              disabled={updating}
+            >
+              Accept
+            </Button>
+          )}
+          {reservation.status === "confirmed" && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onStatusChange(reservation.id, "pending")}
+              disabled={updating}
+            >
+              Tandai Belum
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function CashierDashboardPage() {
   const router = useRouter();
   const { data: session } = useSession();
 
   const [orders, setOrders] = useState<ApiOrder[]>([]);
+  const [reservations, setReservations] = useState<ApiReservation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isReservationLoading, setIsReservationLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [updatingReservationId, setUpdatingReservationId] = useState<string | null>(
+    null,
+  );
   const [revenuePeriod, setRevenuePeriod] = useState<RevenuePeriod>("today");
-  const [customDate, setCustomDate] = useState<string>("");
+  const [customDate, setCustomDate] = useState<string>(() => getTodayString());
 
   // Fetch all orders from API
   const fetchOrders = useCallback(
@@ -274,13 +388,41 @@ export default function CashierDashboardPage() {
     [router],
   );
 
+  const fetchReservations = useCallback(
+    async (silent = false) => {
+      try {
+        const res = await fetch("/api/reservations");
+        if (res.status === 401 || res.status === 403) {
+          router.push("/cashier/login");
+          return;
+        }
+        if (!res.ok) throw new Error("Failed to fetch reservations");
+        const data: ApiReservation[] = await res.json();
+        setReservations(data);
+      } catch {
+        if (!silent) toast.error("Gagal memuat data reservasi");
+      } finally {
+        setIsReservationLoading(false);
+      }
+    },
+    [router],
+  );
+
   // Initial load + auto-refresh every 30s
   useEffect(() => {
-    setCustomDate(getTodayString());
-    fetchOrders();
-    const interval = setInterval(() => fetchOrders(true), 30_000);
+    const loadInitial = async () => {
+      await fetchOrders();
+      await fetchReservations();
+    };
+    void loadInitial();
+
+    const interval = setInterval(() => {
+      void fetchOrders(true);
+      void fetchReservations(true);
+    }, 30_000);
+
     return () => clearInterval(interval);
-  }, [fetchOrders]);
+  }, [fetchOrders, fetchReservations]);
 
   // Status update
   const handleStatusChange = useCallback(
@@ -320,6 +462,39 @@ export default function CashierDashboardPage() {
       fetchOptions: { onSuccess: () => router.push("/cashier/login") },
     });
   };
+
+  const handleReservationStatusChange = useCallback(
+    async (id: string, status: ApiReservation["status"]) => {
+      setUpdatingReservationId(id);
+      setReservations((prev) =>
+        prev.map((reservation) =>
+          reservation.id === id ? { ...reservation, status } : reservation,
+        ),
+      );
+
+      try {
+        const res = await fetch(`/api/reservations/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        });
+        if (!res.ok) throw new Error();
+
+        const labels: Record<ApiReservation["status"], string> = {
+          pending: "Belum Di-accept",
+          confirmed: "Sudah Di-accept",
+          cancelled: "Dibatalkan",
+        };
+        toast.success(`Status reservasi diperbarui → ${labels[status]}`);
+      } catch {
+        await fetchReservations(true);
+        toast.error("Gagal memperbarui status reservasi");
+      } finally {
+        setUpdatingReservationId(null);
+      }
+    },
+    [fetchReservations],
+  );
 
   // Derived data
   const activeOrders = useMemo(
@@ -374,6 +549,32 @@ export default function CashierDashboardPage() {
     return periodLabels[revenuePeriod];
   }, [revenuePeriod, customDate]);
 
+  const upcomingReservations = useMemo(() => {
+    const now = new Date();
+    return reservations
+      .filter(
+        (reservation) =>
+          toReservationDateTime(reservation) >= now &&
+          reservation.status !== "cancelled",
+      )
+      .sort(
+        (a, b) =>
+          toReservationDateTime(a).getTime() - toReservationDateTime(b).getTime(),
+      );
+  }, [reservations]);
+  const pendingReservations = useMemo(
+    () =>
+      upcomingReservations.filter((reservation) => reservation.status === "pending"),
+    [upcomingReservations],
+  );
+  const confirmedReservations = useMemo(
+    () =>
+      upcomingReservations.filter(
+        (reservation) => reservation.status === "confirmed",
+      ),
+    [upcomingReservations],
+  );
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-secondary/20">
@@ -420,7 +621,10 @@ export default function CashierDashboardPage() {
               variant="ghost"
               size="sm"
               className="gap-1.5 text-primary-foreground hover:bg-primary-foreground/10"
-              onClick={() => fetchOrders()}
+              onClick={() => {
+                fetchOrders();
+                fetchReservations(true);
+              }}
               disabled={isRefreshing}
             >
               <RefreshCw
@@ -524,6 +728,15 @@ export default function CashierDashboardPage() {
                 </Badge>
               )}
             </TabsTrigger>
+            <TabsTrigger value="reservations" className="gap-2">
+              <CalendarDays className="h-4 w-4" />
+              Reservasi
+              {pendingReservations.length > 0 && (
+                <Badge className="ml-1 h-5 w-5 p-0 flex items-center justify-center text-xs">
+                  {pendingReservations.length}
+                </Badge>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="revenue" className="gap-2">
               <TrendingUp className="h-4 w-4" />
               Laporan &amp; Selesai
@@ -550,6 +763,73 @@ export default function CashierDashboardPage() {
                     updating={updatingId === order.id}
                   />
                 ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Reservations */}
+          <TabsContent value="reservations">
+            {isReservationLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-52 rounded-xl" />
+                ))}
+              </div>
+            ) : upcomingReservations.length === 0 ? (
+              <div className="text-center py-16 text-muted-foreground">
+                <div className="text-5xl mb-4">🗓️</div>
+                <p className="font-medium">Belum ada reservasi mendatang</p>
+                <p className="text-sm mt-1">
+                  Reservasi baru akan muncul otomatis di sini
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <h3 className="font-semibold">Belum Di-accept</h3>
+                    <Badge variant="secondary">{pendingReservations.length}</Badge>
+                  </div>
+                  {pendingReservations.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Semua reservasi mendatang sudah di-accept.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {pendingReservations.map((reservation) => (
+                        <ReservationCard
+                          key={reservation.id}
+                          reservation={reservation}
+                          updating={updatingReservationId === reservation.id}
+                          onStatusChange={handleReservationStatusChange}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <h3 className="font-semibold">Sudah Di-accept</h3>
+                    <Badge variant="secondary">{confirmedReservations.length}</Badge>
+                  </div>
+                  {confirmedReservations.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Belum ada reservasi mendatang yang di-accept.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {confirmedReservations.map((reservation) => (
+                        <ReservationCard
+                          key={reservation.id}
+                          reservation={reservation}
+                          updating={updatingReservationId === reservation.id}
+                          onStatusChange={handleReservationStatusChange}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </TabsContent>

@@ -4,6 +4,11 @@ import { admin } from "better-auth/plugins";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
 
+const vercelAppUrl = process.env.VERCEL_URL
+  ? `https://${process.env.VERCEL_URL}`
+  : undefined;
+const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? vercelAppUrl ?? "http://localhost:3000";
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "pg",
@@ -15,7 +20,7 @@ export const auth = betterAuth({
     },
   }),
   secret: process.env.BETTER_AUTH_SECRET!,
-  baseURL: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+  baseURL: appUrl,
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,
@@ -34,7 +39,13 @@ export const auth = betterAuth({
       maxAge: 5 * 60,
     },
   },
-  trustedOrigins: [process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"],
+  trustedOrigins: Array.from(
+    new Set(
+      [process.env.NEXT_PUBLIC_APP_URL, vercelAppUrl, "http://localhost:3000"].filter(
+        (value): value is string => Boolean(value),
+      ),
+    ),
+  ),
 });
 
 export type AuthSession = typeof auth.$Infer.Session;

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useCartStore } from "@/lib/store";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
@@ -20,6 +20,13 @@ export default function Navbar() {
   const pathname = usePathname();
   const totalItems = useCartStore((s) => s.getTotalItems());
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const safeTotalItems = mounted ? totalItems : 0;
 
   const isCashierRoute = pathname.startsWith("/cashier");
 
@@ -61,9 +68,9 @@ export default function Navbar() {
             <Button variant="outline" size="sm" className="relative gap-2">
               <ShoppingCart className="h-4 w-4" />
               <span className="hidden sm:inline">Keranjang</span>
-              {totalItems > 0 && (
+              {safeTotalItems > 0 && (
                 <Badge className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center text-xs bg-primary text-primary-foreground">
-                  {totalItems > 9 ? "9+" : totalItems}
+                  {safeTotalItems > 9 ? "9+" : safeTotalItems}
                 </Badge>
               )}
             </Button>
@@ -110,8 +117,8 @@ export default function Navbar() {
                   <Button className="w-full mt-2 gap-2">
                     <ShoppingCart className="h-4 w-4" />
                     Keranjang
-                    {totalItems > 0 && (
-                      <Badge variant="secondary">{totalItems}</Badge>
+                    {safeTotalItems > 0 && (
+                      <Badge variant="secondary">{safeTotalItems}</Badge>
                     )}
                   </Button>
                 </Link>

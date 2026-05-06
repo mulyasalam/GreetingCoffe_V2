@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
-import { orders, orderItems, menuItems } from "@/lib/db/schema";
+import { orders, orderItems, menuItems as menuItemsTable } from "@/lib/db/schema";
+import { menuItems as fallbackMenuItems } from "@/lib/mock-data";
 import { auth } from "@/lib/auth";
 import { desc, inArray } from "drizzle-orm";
 
@@ -9,6 +10,49 @@ function generateOrderNumber(): string {
   const ts = Date.now().toString().slice(-4);
   const rnd = Math.floor(Math.random() * 100).toString().padStart(2, "0");
   return `GC-${ts}-${rnd}`;
+}
+
+type ResolvedMenuItem = {
+  id: string;
+  name: string;
+  emoji: string;
+  price: number;
+  isAvailable: boolean;
+};
+
+function mapOrderError(err: unknown): { status: number; error: string } {
+  const directCode =
+    typeof err === "object" && err !== null && "code" in err
+      ? String((err as { code?: unknown }).code)
+      : "";
+  const causeCode =
+    typeof err === "object" && err !== null && "cause" in err
+      ? String(
+          ((err as { cause?: { code?: unknown } }).cause?.code as unknown) ?? "",
+        )
+      : "";
+  const code = directCode || causeCode;
+  const message = err instanceof Error ? err.message : String(err);
+
+  if (code === "42P01") {
+    return {
+      status: 503,
+      error: "Database schema belum siap. Jalankan `npm run db:push` terlebih dahulu.",
+    };
+  }
+
+  if (
+    code === "ECONNREFUSED" ||
+    message.includes("ECONNREFUSED") ||
+    message.includes("connect")
+  ) {
+    return {
+      status: 503,
+      error: "Database belum bisa diakses. Pastikan PostgreSQL sudah berjalan.",
+    };
+  }
+
+  return { status: 500, error: "Internal server error" };
 }
 
 // ── GET /api/orders — cashier only ──────────────────────────────────────────
@@ -92,33 +136,64 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch menu items to snapshot prices
-    const menuItemIds = cartItems.map((i) => i.menuItemId);
-    const dbItems = await db
-      .select()
-      .from(menuItems)
-      .where(inArray(menuItems.id, menuItemIds));
+    const menuItemIds = [...new Set(cartItems.map((i) => i.menuItemId))];
+    let dbItems: typeof menuItemsTable.$inferSelect[] = [];
+    try {
+      dbItems = await db
+        .select()
+        .from(menuItemsTable)
+        .where(inArray(menuItemsTable.id, menuItemIds));
+    } catch (err) {
+      console.warn("[POST /api/orders] menu lookup failed, using fallback catalog", err);
+    }
 
-    const dbItemMap = new Map(dbItems.map((i) => [i.id, i]));
+    const dbItemMap = new Map<string, ResolvedMenuItem>(
+      dbItems.map((item) => [
+        item.id,
+        {
+          id: item.id,
+          name: item.name,
+          emoji: item.emoji,
+          price: item.price,
+          isAvailable: item.isAvailable,
+        },
+      ]),
+    );
+    const fallbackItemMap = new Map<string, ResolvedMenuItem>(
+      fallbackMenuItems.map((item) => [
+        item.id,
+        {
+          id: item.id,
+          name: item.name,
+          emoji: item.emoji,
+          price: item.price,
+          isAvailable: true,
+        },
+      ]),
+    );
+    const resolvedItemMap = new Map<string, ResolvedMenuItem>();
 
     // Validate all items exist and are available
     for (const ci of cartItems) {
       const dbItem = dbItemMap.get(ci.menuItemId);
-      if (!dbItem) {
+      const item = dbItem ?? fallbackItemMap.get(ci.menuItemId);
+      if (!item) {
         return NextResponse.json(
           { error: `Menu item ${ci.menuItemId} not found` },
           { status: 400 }
         );
       }
-      if (!dbItem.isAvailable) {
+      if (dbItem && !dbItem.isAvailable) {
         return NextResponse.json(
           { error: `${dbItem.name} is currently unavailable` },
           { status: 400 }
         );
       }
+      resolvedItemMap.set(ci.menuItemId, item);
     }
 
     const subtotal = cartItems.reduce((sum, ci) => {
-      const item = dbItemMap.get(ci.menuItemId)!;
+      const item = resolvedItemMap.get(ci.menuItemId)!;
       return sum + item.price * ci.quantity;
     }, 0);
 
@@ -141,7 +216,7 @@ export async function POST(request: NextRequest) {
 
       await tx.insert(orderItems).values(
         cartItems.map((ci) => {
-          const item = dbItemMap.get(ci.menuItemId)!;
+          const item = resolvedItemMap.get(ci.menuItemId)!;
           return {
             id: crypto.randomUUID(),
             orderId,
@@ -162,6 +237,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (err) {
     console.error("[POST /api/orders]", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const mapped = mapOrderError(err);
+    return NextResponse.json({ error: mapped.error }, { status: mapped.status });
   }
 }

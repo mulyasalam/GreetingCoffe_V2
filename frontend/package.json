@@ -11,7 +11,12 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx --env-file=.env.local lib/db/seed.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:setup": "npm run db:up && npm run db:push && npm run db:seed",
+    "db:studio": "drizzle-kit studio --host 127.0.0.1 --port 4983",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "vercel:deploy": "npx vercel",
+    "vercel:deploy:prod": "npx vercel --prod"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

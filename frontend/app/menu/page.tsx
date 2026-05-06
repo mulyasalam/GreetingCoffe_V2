@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { menuItems } from "@/lib/mock-data";
+import { useState, useMemo, useEffect } from "react";
 import { Category } from "@/lib/types";
 import MenuCard from "@/components/menu/MenuCard";
 import CategoryFilter from "@/components/menu/CategoryFilter";
@@ -12,16 +11,61 @@ import Link from "next/link";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/badge";
 
+type ApiMenuItem = {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  category: Exclude<Category, "all">;
+  emoji: string;
+  image?: string;
+  isPopular?: boolean;
+  isAvailable?: boolean;
+};
+
 export default function MenuPage() {
   const [selectedCategory, setSelectedCategory] = useState<Category>("all");
+  const [menu, setMenu] = useState<ApiMenuItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const { getTotalItems, getSubtotal } = useCartStore();
   const totalItems = getTotalItems();
   const subtotal = getSubtotal();
 
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadMenu = async () => {
+      try {
+        setLoadError(false);
+        const res = await fetch("/api/menu");
+        if (!res.ok) throw new Error("Failed to fetch menu");
+        const data = (await res.json()) as ApiMenuItem[];
+        if (!isCancelled) {
+          setMenu(
+            data.filter(
+              (item) => item.isAvailable === undefined || item.isAvailable,
+            ),
+          );
+        }
+      } catch {
+        if (!isCancelled) setLoadError(true);
+      } finally {
+        if (!isCancelled) setIsLoading(false);
+      }
+    };
+
+    loadMenu();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
   const filtered = useMemo(() => {
-    if (selectedCategory === "all") return menuItems;
-    return menuItems.filter((item) => item.category === selectedCategory);
-  }, [selectedCategory]);
+    if (selectedCategory === "all") return menu;
+    return menu.filter((item) => item.category === selectedCategory);
+  }, [selectedCategory, menu]);
 
   return (
     <div className="container mx-auto px-4 py-8 pb-28 md:pb-8">
@@ -38,19 +82,33 @@ export default function MenuPage() {
         <CategoryFilter selected={selectedCategory} onChange={setSelectedCategory} />
       </div>
 
+      {isLoading && (
+        <div className="text-center py-16 text-muted-foreground">
+          <p className="text-4xl mb-3">⏳</p>
+          <p>Memuat menu...</p>
+        </div>
+      )}
+
+      {loadError && !isLoading && (
+        <div className="text-center py-16 text-destructive">
+          <p className="text-4xl mb-3">⚠️</p>
+          <p>Gagal memuat menu. Silakan refresh halaman.</p>
+        </div>
+      )}
+
       {/* Menu Grid */}
-      {filtered.length > 0 ? (
+      {!isLoading && !loadError && filtered.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {filtered.map((item) => (
             <MenuCard key={item.id} item={item} />
           ))}
         </div>
-      ) : (
+      ) : !isLoading && !loadError ? (
         <div className="text-center py-16 text-muted-foreground">
           <p className="text-5xl mb-4">🔍</p>
           <p>Tidak ada menu untuk kategori ini.</p>
         </div>
-      )}
+      ) : null}
 
       {/* Floating Cart Bar (mobile + desktop) */}
       {totalItems > 0 && (

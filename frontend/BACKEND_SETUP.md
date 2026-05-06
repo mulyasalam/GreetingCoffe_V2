@@ -48,11 +48,20 @@ If using local PostgreSQL:
 CREATE DATABASE greetingco;
 ```
 
+If using the provided Docker Compose setup:
+```bash
+npm run db:up
+```
+
 ---
 
 ## 4. Push Schema & Seed
 
 ```bash
+# One-command setup (recommended)
+npm run db:setup
+
+# Or run step-by-step:
 # Push the Drizzle schema to the database (creates all tables)
 npm run db:push
 
@@ -162,7 +171,7 @@ To visually browse and edit your database:
 ```bash
 npm run db:studio
 ```
-Opens at `https://local.drizzle.studio`
+Opens at `http://127.0.0.1:4983`
 
 ---
 
@@ -172,4 +181,47 @@ For production deployments, use migrations instead of `db:push`:
 ```bash
 npm run db:generate   # generate SQL migration files
 npm run db:migrate    # apply migrations to the DB
+```
+
+---
+
+## 11. Deploy to Vercel
+
+This project lives inside the `frontend/` folder, so deploy that folder as the app root.
+
+### Option A — Vercel Dashboard (Recommended)
+
+1. Import the GitHub repository in Vercel.
+2. Set **Root Directory** to `frontend`.
+3. Framework preset: **Next.js** (auto-detected).
+4. Add environment variables in Vercel Project Settings:
+   - `DATABASE_URL`
+   - `BETTER_AUTH_SECRET`
+   - `SETUP_SECRET`
+   - `NEXT_PUBLIC_APP_URL` (your production URL, e.g. `https://your-app.vercel.app`)
+5. Deploy.
+
+### Option B — Vercel CLI
+
+From the `frontend/` directory:
+```bash
+npm run vercel:deploy
+```
+
+For production deployment:
+```bash
+npm run vercel:deploy:prod
+```
+
+### After First Production Deploy
+
+1. Run production migration against your production database (`npm run db:migrate` with production `DATABASE_URL`).
+2. Create and promote cashier admin with your production URL:
+```bash
+curl -X POST https://YOUR_DOMAIN/api/auth/sign-up/email \
+  -H "Content-Type: application/json" \
+  -d '{"email":"kasir@greeting.co","password":"Kasir123!","name":"Kasir Greeting.co"}'
+
+curl -X POST https://YOUR_DOMAIN/api/setup \
+  -H "x-setup-secret: YOUR_SETUP_SECRET_HERE"
 ```
